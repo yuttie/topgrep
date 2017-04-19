@@ -127,9 +127,9 @@ fn main() {
     }
     else {
         while let Ok(Some(snapshot)) = read_snapshot(&mut stdin) {
-            for pid in &pids {
+            for &pid in &pids {
                 for p in &snapshot.processes {
-                    if p["PID"].parse::<u32>().unwrap() == *pid {
+                    if p["PID"].parse::<u32>().unwrap() == pid {
                         println!("{}\t{}\t{}", snapshot.time, pid, p["%CPU"]);
                     }
                 }
