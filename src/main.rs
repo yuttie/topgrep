@@ -96,16 +96,42 @@ fn main() {
              .value_name("PID")
              .multiple(true)
              .number_of_values(1))
+        .arg(Arg::with_name("fold")
+             .long("fold"))
         .setting(AppSettings::ArgRequiredElseHelp)
         .get_matches();
     let pids = values_t!(matches, "pid", u32).unwrap_or_else(|e| e.exit());
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
-    while let Ok(Some(snapshot)) = read_snapshot(&mut stdin) {
-        for pid in &pids {
-            for p in &snapshot.processes {
-                if p["PID"].parse::<u32>().unwrap() == *pid {
-                    println!("{}\t{}\t{}", snapshot.time, pid, p["%CPU"]);
+    if matches.is_present("fold") {
+        let mut records: HashMap<u32, (usize, f64)> = HashMap::new();
+        let mut current_time: String = String::new();
+        while let Ok(Some(snapshot)) = read_snapshot(&mut stdin) {
+            if snapshot.time != current_time {
+                for (pid, &(n, sum)) in records.iter() {
+                    println!("{}\t{}\t{}", current_time, pid, sum / n as f64);
+                }
+                current_time = snapshot.time;
+                records.clear();
+            }
+            for &pid in &pids {
+                for p in &snapshot.processes {
+                    if p["PID"].parse::<u32>().unwrap() == pid {
+                        let accum = records.entry(pid).or_insert((0, 0.0));
+                        accum.0 += 1;
+                        accum.1 += p["%CPU"].parse::<f64>().unwrap();
+                    }
+                }
+            }
+        }
+    }
+    else {
+        while let Ok(Some(snapshot)) = read_snapshot(&mut stdin) {
+            for pid in &pids {
+                for p in &snapshot.processes {
+                    if p["PID"].parse::<u32>().unwrap() == *pid {
+                        println!("{}\t{}\t{}", snapshot.time, pid, p["%CPU"]);
+                    }
                 }
             }
         }
