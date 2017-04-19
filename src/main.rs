@@ -1,4 +1,6 @@
 #[macro_use]
+extern crate clap;
+#[macro_use]
 extern crate lazy_static;
 extern crate regex;
 
@@ -8,6 +10,7 @@ use std::io::prelude::*;
 use std::io::{self};
 use std::vec::Vec;
 
+use clap::{Arg, App, AppSettings};
 use regex::Regex;
 
 
@@ -85,9 +88,26 @@ fn read_snapshot<R: BufRead>(mut reader: R) -> io::Result<Option<Snapshot>> {
 }
 
 fn main() {
+    let matches = App::new("topgrep")
+        .author("Yuta Taniguchi <yuta.taniguchi.y.t@gmail.com>")
+        .arg(Arg::with_name("pid")
+             .long("pid")
+             .takes_value(true)
+             .value_name("PID")
+             .multiple(true)
+             .number_of_values(1))
+        .setting(AppSettings::ArgRequiredElseHelp)
+        .get_matches();
+    let pids = values_t!(matches, "pid", u32).unwrap_or_else(|e| e.exit());
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
     while let Ok(Some(snapshot)) = read_snapshot(&mut stdin) {
-        println!("{}", snapshot.time);
+        for pid in &pids {
+            for p in &snapshot.processes {
+                if p["PID"].parse::<u32>().unwrap() == *pid {
+                    println!("{}\t{}\t{}", snapshot.time, pid, p["%CPU"]);
+                }
+            }
+        }
     }
 }
