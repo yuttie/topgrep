@@ -103,8 +103,10 @@ fn read_snapshot<R: BufRead>(mut reader: R) -> io::Result<Option<Snapshot>> {
 
         let values: Vec<String> = WHITESPACES.splitn(&line, col_names.len()).map(|x| x.to_owned()).collect();
 
-        let process: ProcessInfo = col_names.iter().cloned().zip(values).collect();
-        processes.push(process);
+        if values.len() == col_names.len() {
+            let process: ProcessInfo = col_names.iter().cloned().zip(values).collect();
+            processes.push(process);
+        }
     }
 
     let snapshot = Snapshot {
