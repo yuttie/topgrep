@@ -14,10 +14,12 @@ use clap::{Arg, App, AppSettings};
 use regex::Regex;
 
 
+type ProcessInfo = HashMap<String, String>;
+
 #[derive(Debug)]
 struct Snapshot {
     time: String,
-    processes: Vec<HashMap<String, String>>,
+    processes: Vec<ProcessInfo>,
 }
 
 fn read_snapshot<R: BufRead>(mut reader: R) -> io::Result<Option<Snapshot>> {
@@ -65,7 +67,7 @@ fn read_snapshot<R: BufRead>(mut reader: R) -> io::Result<Option<Snapshot>> {
     let col_names: Vec<String> = line.split_whitespace().map(|x| x.to_owned()).collect();
 
     // Read the process list
-    let mut processes: Vec<HashMap<String, String>> = Vec::new();
+    let mut processes: Vec<ProcessInfo> = Vec::new();
     while reader.read_line(&mut buf).unwrap() > 0 {
         let line = buf.trim().to_owned();
         buf.clear();
@@ -76,7 +78,7 @@ fn read_snapshot<R: BufRead>(mut reader: R) -> io::Result<Option<Snapshot>> {
 
         let values: Vec<String> = whitespaces.splitn(&line, col_names.len()).map(|x| x.to_owned()).collect();
 
-        let process: HashMap<String, String> = col_names.iter().cloned().zip(values).collect();
+        let process: ProcessInfo = col_names.iter().cloned().zip(values).collect();
         processes.push(process);
     }
 
