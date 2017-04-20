@@ -5,6 +5,7 @@ extern crate lazy_static;
 extern crate regex;
 
 
+use std::fmt;
 use std::collections::HashMap;
 use std::io::prelude::*;
 use std::io::{self};
@@ -20,6 +21,30 @@ type ProcessInfo = HashMap<String, String>;
 struct Snapshot {
     time: String,
     processes: Vec<ProcessInfo>,
+}
+
+#[derive(PartialEq, Eq, Hash, Clone, Debug)]
+enum Query {
+    PID(u32),
+    Command(String),
+}
+
+impl Query {
+    fn is_match(&self, p: &ProcessInfo) -> bool {
+        match self {
+            &Query::PID(pid)             => p["PID"].parse::<u32>().unwrap() == pid,
+            &Query::Command(ref command) => &p["COMMAND"] == command,
+        }
+    }
+}
+
+impl fmt::Display for Query {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            &Query::PID(pid)             => write!(f, "{}", pid),
+            &Query::Command(ref command) => write!(f, "{}", command),
+        }
+    }
 }
 
 fn read_snapshot<R: BufRead>(mut reader: R) -> io::Result<Option<Snapshot>> {
@@ -110,79 +135,47 @@ fn main() {
         .get_matches();
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
-    if matches.is_present("pid") {
-        let pids = values_t!(matches, "pid", u32).unwrap_or_else(|e| e.exit());
-        if matches.is_present("fold") {
-            let mut records: HashMap<u32, (usize, f64)> = HashMap::new();
-            let mut current_time: String = String::new();
-            while let Ok(Some(snapshot)) = read_snapshot(&mut stdin) {
-                if snapshot.time != current_time {
-                    for (pid, &(n, sum)) in records.iter() {
-                        println!("{}\t{}\t{}", current_time, pid, sum / n as f64);
-                    }
-                    current_time = snapshot.time;
-                    records.clear();
+    let mut queries: Vec<Query> = Vec::new();
+    for pid in values_t!(matches, "pid", u32).unwrap_or_else(|e| e.exit()) {
+        queries.push(Query::PID(pid));
+    }
+    for command in values_t!(matches, "command", String).unwrap_or_else(|e| e.exit()) {
+        queries.push(Query::Command(command));
+    }
+    if matches.is_present("fold") {
+        let mut records: HashMap<Query, (usize, f64)> = HashMap::new();
+        let mut current_time: String = String::new();
+        while let Ok(Some(snapshot)) = read_snapshot(&mut stdin) {
+            if snapshot.time != current_time {
+                for (query, &(n, sum)) in records.iter() {
+                    println!("{}\t{}\t{}", current_time, query, sum / n as f64);
                 }
-                for &pid in &pids {
-                    for p in &snapshot.processes {
-                        if p["PID"].parse::<u32>().unwrap() == pid {
-                            let accum = records.entry(pid).or_insert((0, 0.0));
-                            accum.0 += 1;
-                            accum.1 += p["%CPU"].parse::<f64>().unwrap();
-                        }
-                    }
-                }
+                current_time = snapshot.time;
+                records.clear();
             }
-        }
-        else {
-            while let Ok(Some(snapshot)) = read_snapshot(&mut stdin) {
-                for &pid in &pids {
-                    for p in &snapshot.processes {
-                        if p["PID"].parse::<u32>().unwrap() == pid {
-                            println!("{}\t{}\t{}", snapshot.time, pid, p["%CPU"]);
-                        }
+            for query in &queries {
+                let mut sum: f64 = 0.0;
+                for p in &snapshot.processes {
+                    if query.is_match(p) {
+                        sum += p["%CPU"].parse::<f64>().unwrap();
                     }
                 }
+                let accum = records.entry(query.clone()).or_insert((0, 0.0));
+                accum.0 += 1;
+                accum.1 += sum;
             }
         }
     }
-    else if matches.is_present("command") {
-        let commands = values_t!(matches, "command", String).unwrap_or_else(|e| e.exit());
-        if matches.is_present("fold") {
-            let mut records: HashMap<String, (usize, f64)> = HashMap::new();
-            let mut current_time: String = String::new();
-            while let Ok(Some(snapshot)) = read_snapshot(&mut stdin) {
-                if snapshot.time != current_time {
-                    for (command, &(n, sum)) in records.iter() {
-                        println!("{}\t{}\t{}", current_time, command, sum / n as f64);
+    else {
+        while let Ok(Some(snapshot)) = read_snapshot(&mut stdin) {
+            for query in &queries {
+                let mut sum: f64 = 0.0;
+                for p in &snapshot.processes {
+                    if query.is_match(p) {
+                        sum += p["%CPU"].parse::<f64>().unwrap();
                     }
-                    current_time = snapshot.time;
-                    records.clear();
                 }
-                for command in &commands {
-                    let mut sum: f64 = 0.0;
-                    for p in &snapshot.processes {
-                        if &p["COMMAND"] == command {
-                            sum += p["%CPU"].parse::<f64>().unwrap();
-                        }
-                    }
-                    let accum = records.entry(command.clone()).or_insert((0, 0.0));
-                    accum.0 += 1;
-                    accum.1 += sum;
-                }
-            }
-        }
-        else {
-            while let Ok(Some(snapshot)) = read_snapshot(&mut stdin) {
-                for command in &commands {
-                    let mut sum: f64 = 0.0;
-                    for p in &snapshot.processes {
-                        if &p["COMMAND"] == command {
-                            sum += p["%CPU"].parse::<f64>().unwrap();
-                        }
-                    }
-                    println!("{}\t{}\t{}", snapshot.time, command, sum);
-                }
+                println!("{}\t{}\t{}", snapshot.time, query, sum);
             }
         }
     }
