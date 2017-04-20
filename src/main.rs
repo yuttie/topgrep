@@ -25,7 +25,7 @@ struct Snapshot {
 fn read_snapshot<R: BufRead>(mut reader: R) -> io::Result<Option<Snapshot>> {
     lazy_static! {
         static ref TOP_START: Regex = Regex::new(r"^top - (.+?) up").unwrap();
-        static ref whitespaces: Regex = Regex::new(r"\s+").unwrap();
+        static ref WHITESPACES: Regex = Regex::new(r"\s+").unwrap();
     }
 
     let mut buf = String::new();
@@ -76,7 +76,7 @@ fn read_snapshot<R: BufRead>(mut reader: R) -> io::Result<Option<Snapshot>> {
             break;
         }
 
-        let values: Vec<String> = whitespaces.splitn(&line, col_names.len()).map(|x| x.to_owned()).collect();
+        let values: Vec<String> = WHITESPACES.splitn(&line, col_names.len()).map(|x| x.to_owned()).collect();
 
         let process: ProcessInfo = col_names.iter().cloned().zip(values).collect();
         processes.push(process);
