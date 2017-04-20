@@ -136,10 +136,10 @@ fn main() {
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
     let mut queries: Vec<Query> = Vec::new();
-    for pid in values_t!(matches, "pid", u32).unwrap_or_else(|e| e.exit()) {
+    for pid in values_t!(matches, "pid", u32).unwrap_or(Vec::new()) {
         queries.push(Query::PID(pid));
     }
-    for command in values_t!(matches, "command", String).unwrap_or_else(|e| e.exit()) {
+    for command in values_t!(matches, "command", String).unwrap_or(Vec::new()) {
         queries.push(Query::Command(command));
     }
     if matches.is_present("fold") {
