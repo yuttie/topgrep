@@ -77,19 +77,18 @@ fn read_snapshot<R: BufRead>(mut reader: R) -> io::Result<Option<Snapshot>> {
 
     // Skip to a blank line
     while reader.read_line(&mut buf)? > 0 {
-        let line = buf.trim().to_owned();
+        let line_is_empty = buf.trim().len() == 0;
         buf.clear();
 
-        if line.len() == 0 {
+        if line_is_empty {
             break;
         }
     }
 
     // Read a header line of a process list
     reader.read_line(&mut buf).unwrap();
-    let line = buf.trim().to_owned();
+    let col_names: Vec<String> = buf.trim().split_whitespace().map(|x| x.to_owned()).collect();
     buf.clear();
-    let col_names: Vec<String> = line.split_whitespace().map(|x| x.to_owned()).collect();
 
     // Read the process list
     let mut processes: Vec<ProcessInfo> = Vec::new();
