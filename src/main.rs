@@ -166,7 +166,7 @@ fn read_snapshot<R: BufRead>(mut reader: R) -> io::Result<Option<Snapshot>> {
     }
 
     let snapshot = Snapshot {
-        time: time_str.to_owned(),
+        time: time_str,
         nrows: nrows,
         table: table,
     };
