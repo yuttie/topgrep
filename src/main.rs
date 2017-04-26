@@ -15,12 +15,62 @@ use clap::{Arg, App, AppSettings};
 use regex::Regex;
 
 
-type ProcessInfo = HashMap<String, String>;
+#[derive(Debug, Clone, Copy)]
+struct ProcessIterator<'a> {
+    snapshot: &'a Snapshot,
+    index: usize,
+}
+
+impl<'a> Iterator for ProcessIterator<'a> {
+    type Item = Process<'a>;
+
+    fn next(&mut self) -> Option<Process<'a>> {
+        if self.index < self.snapshot.nrows {
+            let i = self.index;
+            self.index += 1;
+
+            Some(Process {
+                snapshot: self.snapshot,
+                index: i,
+            })
+        }
+        else {
+            None
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Process<'a> {
+    snapshot: &'a Snapshot,
+    index: usize,
+}
+
+impl<'a> Process<'a> {
+    fn get(&self, key: &str) -> Option<&str> {
+        if let Some(v) = self.snapshot.table.get(key) {
+            Some(&v[self.index])
+        }
+        else {
+            None
+        }
+    }
+}
 
 #[derive(Debug)]
 struct Snapshot {
     time: String,
-    processes: Vec<ProcessInfo>,
+    nrows: usize,
+    table: HashMap<String, Vec<String>>,
+}
+
+impl Snapshot {
+    fn iter(&self) -> ProcessIterator {
+        ProcessIterator {
+            snapshot: self,
+            index: 0,
+        }
+    }
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
@@ -30,10 +80,10 @@ enum Query {
 }
 
 impl Query {
-    fn is_match(&self, p: &ProcessInfo) -> bool {
+    fn is_match(&self, p: Process) -> bool {
         match self {
-            &Query::PID(pid)             => p["PID"].parse::<u32>().unwrap() == pid,
-            &Query::Command(ref command) => &p["COMMAND"] == command,
+            &Query::PID(pid)             => p.get("PID").unwrap().parse::<u32>().unwrap() == pid,
+            &Query::Command(ref command) => &p.get("COMMAND").unwrap() == command,
         }
     }
 }
@@ -91,7 +141,11 @@ fn read_snapshot<R: BufRead>(mut reader: R) -> io::Result<Option<Snapshot>> {
     buf.clear();
 
     // Read the process list
-    let mut processes: Vec<ProcessInfo> = Vec::new();
+    let mut table: HashMap<String, Vec<String>> = HashMap::new();
+    for col_name in &col_names {
+        table.entry(col_name.to_owned()).or_insert(Vec::new());
+    }
+    let mut nrows = 0;
     while reader.read_line(&mut buf).unwrap() > 0 {
         let line = buf.trim().to_owned();
         buf.clear();
@@ -103,14 +157,18 @@ fn read_snapshot<R: BufRead>(mut reader: R) -> io::Result<Option<Snapshot>> {
         let values: Vec<String> = WHITESPACES.splitn(&line, col_names.len()).map(|x| x.to_owned()).collect();
 
         if values.len() == col_names.len() {
-            let process: ProcessInfo = col_names.iter().cloned().zip(values).collect();
-            processes.push(process);
+            for (col_name, value) in col_names.iter().zip(values) {
+                let col = table.get_mut(col_name).unwrap();
+                col.push(value);
+            }
+            nrows += 1;
         }
     }
 
     let snapshot = Snapshot {
         time: time_str.to_owned(),
-        processes: processes,
+        nrows: nrows,
+        table: table,
     };
     return Ok(Some(snapshot));
 }
@@ -151,14 +209,14 @@ fn main() {
                 for (query, &(n, sum)) in records.iter() {
                     println!("{}\t{}\t{}", current_time, query, sum / n as f64);
                 }
-                current_time = snapshot.time;
+                current_time = snapshot.time.clone();
                 records.clear();
             }
             for query in &queries {
                 let mut sum: f64 = 0.0;
-                for p in &snapshot.processes {
+                for p in snapshot.iter() {
                     if query.is_match(p) {
-                        sum += p["%CPU"].parse::<f64>().unwrap();
+                        sum += p.get("%CPU").unwrap().parse::<f64>().unwrap();
                     }
                 }
                 let accum = records.entry(query.clone()).or_insert((0, 0.0));
@@ -171,9 +229,9 @@ fn main() {
         while let Ok(Some(snapshot)) = read_snapshot(&mut stdin) {
             for query in &queries {
                 let mut sum: f64 = 0.0;
-                for p in &snapshot.processes {
+                for p in snapshot.iter() {
                     if query.is_match(p) {
-                        sum += p["%CPU"].parse::<f64>().unwrap();
+                        sum += p.get("%CPU").unwrap().parse::<f64>().unwrap();
                     }
                 }
                 println!("{}\t{}\t{}", snapshot.time, query, sum);
