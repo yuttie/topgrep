@@ -202,26 +202,27 @@ fn main() {
         queries.push(Query::Command(command));
     }
     if matches.is_present("fold") {
-        let mut records: HashMap<Query, (usize, f64)> = HashMap::new();
-        let mut current_time: String = String::new();
+        let mut snapshots: Vec<Snapshot> = Vec::new();
         while let Ok(Some(snapshot)) = read_snapshot(&mut stdin) {
-            if snapshot.time != current_time {
-                for (query, &(n, sum)) in records.iter() {
-                    println!("{}\t{}\t{}", current_time, query, sum / n as f64);
-                }
-                current_time = snapshot.time.clone();
-                records.clear();
+            if snapshots.is_empty() || snapshot.time == snapshots[0].time {
+                snapshots.push(snapshot);
             }
-            for query in &queries {
-                let mut sum: f64 = 0.0;
-                for p in snapshot.iter() {
-                    if query.is_match(p) {
-                        sum += p.get("%CPU").unwrap().parse::<f64>().unwrap();
+            else {
+                for query in &queries {
+                    let mut sum: f64 = 0.0;
+                    for s in &snapshots {
+                        let mut ssum: f64 = 0.0;
+                        for p in s.iter() {
+                            if query.is_match(p) {
+                                ssum += p.get("%CPU").unwrap().parse::<f64>().unwrap();
+                            }
+                        }
+                        sum += ssum;
                     }
+                    println!("{}\t{}\t{}", snapshots[0].time, query, sum / snapshots.len() as f64);
                 }
-                let accum = records.entry(query.clone()).or_insert((0, 0.0));
-                accum.0 += 1;
-                accum.1 += sum;
+                snapshots.clear();
+                snapshots.push(snapshot);
             }
         }
     }
