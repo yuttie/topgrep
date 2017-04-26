@@ -147,14 +147,16 @@ fn read_snapshot<R: BufRead>(mut reader: R) -> io::Result<Option<Snapshot>> {
     }
     let mut nrows = 0;
     while reader.read_line(&mut buf).unwrap() > 0 {
-        let line = buf.trim().to_owned();
+        let values: Vec<String> = {
+            let line = buf.trim();
+
+            if line.is_empty() {
+                break;
+            }
+
+            WHITESPACES.splitn(line, col_names.len()).map(|s| s.to_owned()).collect()
+        };
         buf.clear();
-
-        if line.len() == 0 {
-            break;
-        }
-
-        let values: Vec<String> = WHITESPACES.splitn(&line, col_names.len()).map(|x| x.to_owned()).collect();
 
         if values.len() == col_names.len() {
             for (col_name, value) in col_names.iter().zip(values) {
@@ -164,6 +166,7 @@ fn read_snapshot<R: BufRead>(mut reader: R) -> io::Result<Option<Snapshot>> {
             nrows += 1;
         }
     }
+    buf.clear();
 
     let snapshot = Snapshot {
         time: time_str,
